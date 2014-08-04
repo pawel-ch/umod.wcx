@@ -17,7 +17,6 @@
 #include <windows.h>
 #include "wcxhead.h"
 #include <direct.h>
-//#include <msdetect.h> // CbGetIniKeyString
 
 // TODO: reference additional headers your program requires here
 

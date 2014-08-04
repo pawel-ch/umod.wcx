@@ -1,16 +1,16 @@
-/**************************************************************
-  UMOD.WCX plugin for Total Commander by balver <balver@pf.pl>
-***************************************************************
+/*****************************************************************
+  UMOD.WCX plugin for Total Commander by balver <balver@gmail.com>
+******************************************************************
 
-  For credits or some info, see readme-en.txt. I'm from Poland,
-  so Polish documentation is also available.
+  For credits or some info, see readme-en.txt. I'm from Poland, so
+  Polish documentation is also available.
 
   You can download the newest version at:
   http://square.piwko.pl/index.php?adres=download
 
   This plugin is licensed under GPL.
 
-**************************************************************/
+*****************************************************************/
 
 #include "stdafx.h"            // a file present in every Visual C++ project
                                // we can for example include here some standard libraries
@@ -18,7 +18,6 @@
                                // thanks to Luigi Auriemma for publishing it
 
 #define BUFFSZ      32768      // buffer length
-#define NAMESZ      260        // file name/path length
 #define UMODSIGN    0x9fe3c5a3 // UMOD sign if UMOD archive's identification number
 
 // a little structure, where we store an important info about UMOD's INDEX section :D
@@ -38,15 +37,16 @@ struct settings {
                       // 1: change manifest.* -> !UMOD.*
                       // 2: change manifest.* -> !<product>.* (not implemented yet)
 	                  //    default: 1
-	int Modify;       // 1: add "!make UMOD.bat" file into archive (and modify manifest.ini file in future)
+	int Modify;       // 1: add "! make UMOD.bat" file into archive (and modify manifest.ini file in future)
 	                  //    default: 1
-	char ProductName[NAMESZ]; // cannot be definied in umod.cfg
+	int ProductNameLen;
+	char ProductName[_MAX_FNAME]; // cannot be definied in umod.cfg
 } settings;
 
 // an simple structure that stores info about one file from archive
 typedef struct t_FileList {
-	char name[NAMESZ];
-	char pathname[NAMESZ];
+	char name[_MAX_FNAME];
+	//char pathname[NAMESZ];
 	long offset;
 	long size;
 	long flag;
@@ -56,7 +56,7 @@ typedef struct t_FileList {
 
 // a very important structure, storing all needed info about UMOD archive, we've already opened
 typedef struct t_ArchiveInfo {
-	char name[NAMESZ];      // UMOD archive name
+	char name[_MAX_FNAME];      // UMOD archive name
 	FILE *hArchFile;        // HANDLE to file ("active" all the time, when plugin works)
 	SYSTEMTIME stLastWrite; // last modification date
 
@@ -78,22 +78,36 @@ void ReadSettings(void);
 // plugin path "things"
 char szPlugPath[MAX_PATH],
      szConfPath[MAX_PATH],
-	 szLogPath[MAX_PATH],
+     szLogPath[MAX_PATH],
      szDrive[_MAX_DRIVE],
      szPath[MAX_PATH],
      szName[_MAX_FNAME],
-     szExt[_MAX_EXT];
+     szExt[_MAX_EXT],
+     szTempPath[MAX_PATH],
+     szTempManifest[MAX_PATH];
 
-// here plugin starts - it is good place to define, where plugin is and from where we will read settings
-BOOL APIENTRY DllMain(HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved) {
-	if(ul_reason_for_call==DLL_PROCESS_ATTACH) {
-		GetModuleFileName((HINSTANCE)hModule,szPlugPath,MAX_PATH); // path to umod.wcx (with filename)
-//		GetModuleFileName(NULL,szFullPath,MAX_PATH);               // path to TC (without file name)
-		_splitpath(szPlugPath,szDrive,szPath,szName,szExt); strcpy(szName,"umod");
-		strcpy(szExt,"cfg"); _makepath(szConfPath,szDrive,szPath,szName,szExt);
-		strcpy(szExt,"log"); _makepath(szLogPath,szDrive,szPath,szName,szExt);
-	}
-	return TRUE;
+LPTSTR Buffer;
+
+// HERE PLUGIN STARTS - IT IS GOOD PLACE TO DEFINE, WHERE PLUGIN IS AND FROM WHERE WE WILL READ SETTINGS
+BOOL APIENTRY DllMain( HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved) {
+  switch (ul_reason_for_call) {
+    case DLL_PROCESS_ATTACH:
+    case DLL_THREAD_ATTACH:
+      GetModuleFileName((HINSTANCE)hModule,szPlugPath,MAX_PATH); // path to umod.wcx (with filename)
+//    GetModuleFileName(NULL,szFullPath,MAX_PATH);               // path to TC (without file name)
+      _splitpath(szPlugPath,szDrive,szPath,szName,szExt); strcpy(szName,"umod");
+      strcpy(szExt,"cfg"); _makepath(szConfPath,szDrive,szPath,szName,szExt);
+      strcpy(szExt,"log"); _makepath(szLogPath,szDrive,szPath,szName,szExt);
+      strcpy(szTempPath,getenv("TEMP")); // temporary path for unpacking manifest.ini file
+	  strcpy(szTempManifest,szTempPath);
+	  strcat(szTempManifest,"manifest.ini");
+      break;
+
+    case DLL_THREAD_DETACH:
+    case DLL_PROCESS_DETACH:
+      break;
+  }
+  return TRUE;
 }
 
 //#################################[ DLL exports ]#####################################
@@ -101,10 +115,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserv
 // OpenArchive should perform all necessary operations when an archive is to be opened
 myHANDLE __stdcall OpenArchive(tOpenArchiveData *ArchiveData) {
 	t_ArchiveInfo * hArcData;
-	settings.CRC=0;
-	settings.ChangeName=1;
-	settings.Modify=1;
-	strcpy(settings.ProductName,"UMOD");
 
 	ReadSettings();
 
@@ -190,6 +200,8 @@ myHANDLE __stdcall OpenArchive(tOpenArchiveData *ArchiveData) {
 	// set hArcData->filelist to pointer to first file record
 	while (hArcData->filelist->prev != NULL) hArcData->filelist = hArcData->filelist->prev;
 
+	// 2005-04-07 we are here :)
+	// there is a need to put product name detection here
 	return hArcData;
 }
 
@@ -239,8 +251,8 @@ int __stdcall ProcessFile(myHANDLE hArcData, int Operation, char *DestPath, char
 		// important part of plugin begins here
 		CreateDirectory(DestPath,NULL);
 
-		// "System\!make UMOD.bat" file creation
-		if(strcmp(hArcData->filelist->name,"System\\!make UMOD.bat")==0) {
+		// "System\! make UMOD.bat" file creation
+		if(strcmp(hArcData->filelist->name,"System\\! make UMOD.bat")==0) {
 			outputfile = fopen(DestName,"wt");
 			if(!outputfile) {
 				if(outputfile!=NULL) fclose(outputfile);
@@ -303,6 +315,57 @@ int __stdcall ProcessFile(myHANDLE hArcData, int Operation, char *DestPath, char
 	return 0;
 }
 
+int extract(long size, long len, long offset, myHANDLE hArcData)
+{
+	FILE  *outputfile;
+	void  *buff;
+
+	// important part of plugin begins here
+	CreateDirectory(szTempPath,NULL);
+
+	// standard UMOD files process here
+	outputfile = fopen(szTempManifest,"wb");
+	if(!outputfile) {
+		if(outputfile!=NULL) fclose(outputfile);
+		return E_EWRITE;
+	}
+
+	//MessageBox(NULL,"jest ok","Nie-b³¹d",MB_OK);
+
+	buff = malloc(BUFFSZ);
+	if(!buff) {
+		free(buff);
+		return E_NO_MEMORY;
+	}
+	if(fseek(hArcData->hArchFile,offset,SEEK_SET)<0) {
+		fclose(hArcData->hArchFile);
+		return E_EREAD;
+	}
+
+	// let's do it... :D
+	len = BUFFSZ;
+
+	while(size) {
+		if(len>size) len = size;
+		if(fread(buff,len,1,hArcData->hArchFile)!=1) {
+			if(outputfile!=NULL) fclose(outputfile);
+			free(buff);
+			return 0;
+		}
+		if(fwrite(buff,len,1,outputfile)!=1) {
+			if(outputfile!=NULL) fclose(outputfile);
+			free(buff);
+			return 0;
+		}
+		size-=len;
+	}
+
+	// uninitialize stuff... :P
+	fclose(outputfile);
+	free (buff);
+	return 0;
+}
+
 // CloseArchive should perform all necessary operations when an archive is about to be closed
 int __stdcall CloseArchive(myHANDLE hArcData)
 {
@@ -329,6 +392,7 @@ int CreateFileList(myHANDLE hArcData) {
 
 	t_FileList *newfile, *previous;
 	int counter;
+	long PointerPosition;
 
 	// store INDEX section of UMOD (it contains all info about files in archive)
 	if(fseek(hArcData->hArchFile,end.indexstart,SEEK_SET)<0) { // PL: uszkodzony INDEX / ENG: bad INDEX
@@ -351,12 +415,12 @@ int CreateFileList(myHANDLE hArcData) {
 		newfile->prev = NULL; newfile->next=NULL;
 
 		// the beginning of list is good place to inform TC about files not existing in UMOD
-		// for now plugin adds "System\!make UMOD.bat" file (depending on two settings - see below)
+		// for now plugin adds "System\! make UMOD.bat" file (depending on two settings - see below)
 		if (counter==0) {
 			hArcData->filelist=newfile;
 			if((settings.ChangeName==1)&&(settings.Modify==1)) {
-			  strcpy(newfile->name,"System\\!make UMOD.bat");
-			  newfile->size=158;
+			  strcpy(newfile->name,"System\\! make UMOD.bat");
+			  newfile->size=146+3*settings.ProductNameLen;
 			  previous = newfile;
 			  continue;
 			}
@@ -366,13 +430,6 @@ int CreateFileList(myHANDLE hArcData) {
 		if(fread(newfile->name,fread_index(hArcData->hArchFile), 1, hArcData->hArchFile)!=1) {
 			fclose(hArcData->hArchFile);
 			return E_EREAD;
-		}
-
-		// code IMHO is easy to understand (if not: it changes names in archive - it doesn't
-		// modify UMOD, but it modify what we will see when we open archive in TC)
-		if(settings.ChangeName==1) { // needed an modification below for settings.ProductName
-		  if(strcmp(newfile->name,"System\\Manifest.ini")==0) strcpy(newfile->name,"System\\!UMOD.ini");
-		  if(strcmp(newfile->name,"System\\Manifest.int")==0) strcpy(newfile->name,"System\\!UMOD.int");
 		}
 
 		// store file offset in UMOD archive
@@ -390,6 +447,32 @@ int CreateFileList(myHANDLE hArcData) {
 			fclose(hArcData->hArchFile);
 			return E_EREAD;
 		}
+
+		// we'll extract manifest.ini to find out what the product name is
+		if((settings.ChangeName==1)&&(strcmp(newfile->name,"System\\Manifest.ini")==0)) { // needed an modification below for settings.ProductName
+			PointerPosition = ftell(hArcData->hArchFile);
+			extract(newfile->size,newfile->size,newfile->offset,hArcData);
+            settings.ProductNameLen = (int)GetPrivateProfileString("Setup","Product","UMOD",settings.ProductName,_MAX_FNAME,szTempManifest);
+			DeleteFile(szTempManifest);
+			fseek(hArcData->hArchFile,PointerPosition,SEEK_SET);
+		}
+
+		// code IMHO is easy to understand (if not: it changes names in archive - it doesn't
+		// modify UMOD, but it modify what we will see when we open archive in TC)
+		if(settings.ChangeName==1) { // needed an modification below for settings.ProductName
+			if(strcmp(newfile->name,"System\\Manifest.ini")==0) {
+				strcpy(newfile->name,"System\\!");
+				strcat(newfile->name,settings.ProductName);
+				strcat(newfile->name,".ini");
+			}
+
+			if(strcmp(newfile->name,"System\\Manifest.int")==0) {
+				strcpy(newfile->name,"System\\!");
+				strcat(newfile->name,settings.ProductName);
+				strcat(newfile->name,".int");
+			}
+		}
+
 		// set pointers to next and previous recors
 		if (counter>0) { previous->next = newfile; newfile->prev = previous; }
 		// remember current "fileinfo record" as previous
@@ -427,39 +510,11 @@ long fread_index(FILE *fd) {
     return(result);
 }
 
-// this function should open umod.cfg (INI-format) file in plugin directory and read settings from it.
-// unfortunately it cannot do it
+// this function reads umod.cfg (INI-format) file in plugin's directory and read settings from it.
 void ReadSettings(void) {
-// ==============================================================================================
-/* 1st attempt:
-	FILE*settings;
-	settings=fopen(szConfPath,"rb");
-	if(!settings) {
-		MessageBox(NULL,"nie wczytany","B³¹d",MB_OK);
-		return;
-	}
-	if(fscanf(settings,"CRC=")!=0) MessageBox(NULL,"CRC=","B³¹d",MB_OK);
-	if(fscanf(settings,"CRC2=")!=0) MessageBox(NULL,"CRC2=","B³¹d",MB_OK);
-	fclose(settings);
-// =========================================================================================== */
-/* 2nd attempt:
-	char buff[10];
-	settings.CRC = CbGetIniKeyString((char*)&szConfPath,"Settings","CRC",buff,10);
-	settings.ChangeName = CbGetIniKeyString((char*)&szConfPath,"Settings","ChangeName",buff,10);
-	settings.Modify = CbGetIniKeyString((char*)&szConfPath,"Settings","Modify",buff,10);
-
-// =========================================================================================== */
-/* 3rd attempt:
-	HANDLE SettingsFile;
-	char buff[10];
-	SettingsFile = CreateFile((char*)&szConfPath,
-		GENERIC_READ,
-		FILE_SHARE_READ,
-		NULL,
-		OPEN_EXISTING,
-		FILE_ATTRIBUTE_NORMAL,
-		NULL);
-
-	CloseHandle(SettingsFile);
-// =========================================================================================== */
+	settings.CRC = GetPrivateProfileInt("Settings","CRC",0,(char*)&szConfPath);
+	settings.ChangeName = GetPrivateProfileInt("Settings","ChangeName",1,(char*)&szConfPath);
+	settings.Modify = GetPrivateProfileInt("Settings","Modify",1,(char*)&szConfPath);
+	strcpy(settings.ProductName,"UMOD");
+	settings.ProductNameLen=4;
 }

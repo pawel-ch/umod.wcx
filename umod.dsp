@@ -87,7 +87,7 @@ LINK32=link.exe
 
 # Name "umod - Win32 Release"
 # Name "umod - Win32 Debug"
-# Begin Group "Pliki Ÿród³owe"
+# Begin Group "Source Files"
 
 # PROP Default_Filter "cpp;c;cxx;rc;def;r;odl;idl;hpj;bat"
 # Begin Source File
@@ -108,7 +108,7 @@ SOURCE=.\umod.def
 SOURCE=.\umod.rc
 # End Source File
 # End Group
-# Begin Group "Pliki nag³ówkowe"
+# Begin Group "Header Files"
 
 # PROP Default_Filter "h;hpp;hxx;hm;inl"
 # Begin Source File
@@ -124,7 +124,13 @@ SOURCE=.\umodcrc.h
 SOURCE=.\wcxhead.h
 # End Source File
 # End Group
-# Begin Group "Dokumentacja"
+# Begin Group "Resource Files"
+# PROP Default_Filter "ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"
+# Begin Source File
+SOURCE=.\umod.ico
+# End Source File
+# End Group
+# Begin Group "Documentation"
 
 # PROP Default_Filter "txt,rtf,doc,html"
 # Begin Source File
@@ -136,8 +142,5 @@ SOURCE=.\LICENSE
 SOURCE=.\README.md
 # End Source File
 # End Group
-# Begin Source File
-SOURCE=.\umod.ico
-# End Source File
 # End Target
 # End Project
