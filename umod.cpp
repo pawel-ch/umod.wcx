@@ -53,6 +53,37 @@ typedef struct t_ArchiveInfo {
 
 typedef t_ArchiveInfo *myHANDLE;
 
+long fread_index(FILE *fd) {
+    long    result = 0;
+    unsigned char  b0,
+            b1,
+            b2,
+            b3,
+            b4;
+
+    b0 = fgetc(fd);
+    if(b0 & 0x40) {
+        b1 = fgetc(fd);
+        if(b1 & 0x80) {
+            b2 = fgetc(fd);
+            if(b2 & 0x80) {
+                b3 = fgetc(fd);
+                if(b3 & 0x80) {
+                    b4 = fgetc(fd);
+                    result = b4;
+                }
+                result = (result << 7) | (b3 & 0x7f);
+            }
+            result = (result << 7) | (b2 & 0x7f);
+        }
+        result = (result << 7) | (b1 & 0x7f);
+    }
+    result = (result << 6) | (b0 & 0x3f);
+    if(b0 & 0x80) result = -result;
+
+    return(result);
+}
+
 int CreateFileList(myHANDLE archinfo) {
 	// na razie okreœlamy: flag, name, next, offset, prev, size
 	// nie okreœlamy: pathname
@@ -63,7 +94,7 @@ int CreateFileList(myHANDLE archinfo) {
 		fclose(archinfo->hArchFile);
 		return E_BAD_ARCHIVE;
 	}
-	archinfo->totalfiles=fgetc(archinfo->hArchFile);
+	archinfo->totalfiles=fread_index(archinfo->hArchFile);
 	for (counter=0; archinfo->totalfiles > counter; counter++) {
 		if((nowyplik = new t_FileList)==NULL) {
 			fclose(archinfo->hArchFile);
@@ -72,10 +103,12 @@ int CreateFileList(myHANDLE archinfo) {
 		nowyplik->prev = NULL; // dla bezpieczeñstwa
 		nowyplik->next=NULL;
 		if (counter==0) archinfo->filelist=nowyplik;
-		if(fread(nowyplik->name,fgetc(archinfo->hArchFile), 1, archinfo->hArchFile)!=1) {
+		if(fread(nowyplik->name,fread_index(archinfo->hArchFile), 1, archinfo->hArchFile)!=1) {
 			fclose(archinfo->hArchFile);
 			return E_EREAD;
 		}
+		if(strcmp(nowyplik->name,"System\\Manifest.ini")==0) strcpy(nowyplik->name,"System\\!UMOD.ini");
+		if(strcmp(nowyplik->name,"System\\Manifest.int")==0) strcpy(nowyplik->name,"System\\!UMOD.int");
 //	  	MessageBox(NULL,(const char *)&(nowyplik->name),(const char *)&(nowyplik->name),MB_OK);
 		if(fread(&(nowyplik->offset),4,1,archinfo->hArchFile)!=1) {
 			fclose(archinfo->hArchFile);
@@ -101,7 +134,6 @@ int CreateFileList(myHANDLE archinfo) {
 
 // OpenArchive should perform all necessary operations when an archive is to be opened
 myHANDLE __stdcall OpenArchive(tOpenArchiveData *ArchiveData) {
-	t_FileList flist;
 	t_ArchiveInfo * archinfo;
 
 	ArchiveData->CmtBuf=0;
@@ -170,11 +202,7 @@ myHANDLE __stdcall OpenArchive(tOpenArchiveData *ArchiveData) {
 int __stdcall ReadHeader(myHANDLE hArcData, tHeaderData *HeaderData)
 {
 
-	if(hArcData->lastfile == 1) {
-//		while (hArcData->filelist->prev != NULL) hArcData->filelist = hArcData->filelist->prev;
-		hArcData->lastfile = 0; // powrót do ustawieñ domyœlnych, ^ tu te¿ ;P
-		return E_END_ARCHIVE; // jeœli w poprzednim wywo³aniu by³ ostatni plik koñczymy wywo³ywanie
-	}
+	if(hArcData->lastfile == 1) return E_END_ARCHIVE;
 
 	strcpy(HeaderData->ArcName,hArcData->name);
 	HeaderData->CmtBuf=0;
@@ -196,8 +224,6 @@ int __stdcall ReadHeader(myHANDLE hArcData, tHeaderData *HeaderData)
 		hArcData->lastfile=1;
 		return 0;
 	}
-	
-	hArcData->filelist=hArcData->filelist->next;
 	return 0;
 }
 
@@ -207,7 +233,7 @@ int __stdcall ProcessFile(myHANDLE hArcData, int Operation, char *DestPath, char
 	FILE  *wyjscie;
 	long  len, size;
 	void  *buff;
-	size = hArcData->filelist->prev->size;
+	size = hArcData->filelist->size;
 
 	if (Operation == PK_EXTRACT) {
 		// tutaj znajduje siê to, co najwa¿niejsze
@@ -224,7 +250,7 @@ int __stdcall ProcessFile(myHANDLE hArcData, int Operation, char *DestPath, char
 			free(buff);
 			return E_NO_MEMORY;
 		}
-		if(fseek(hArcData->hArchFile,hArcData->filelist->prev->offset,SEEK_SET)<0) {
+		if(fseek(hArcData->hArchFile,hArcData->filelist->offset,SEEK_SET)<0) {
 			fclose(hArcData->hArchFile);
 			return E_EREAD;
 		}
@@ -254,6 +280,7 @@ int __stdcall ProcessFile(myHANDLE hArcData, int Operation, char *DestPath, char
 		free (buff);
 		// dalej s¹ tylko g³upoty
 	}
+	if (hArcData->lastfile!=1) hArcData->filelist=hArcData->filelist->next;
 	return 0;
 }
 
@@ -265,12 +292,8 @@ int __stdcall CloseArchive(myHANDLE hArcData)
 }
 
 // This function allows you to notify user about changing a volume when packing files
-void __stdcall SetChangeVolProc(myHANDLE hArcData, tChangeVolProc pChangeVolProc)
-{
-}
+void __stdcall SetChangeVolProc(myHANDLE hArcData, tChangeVolProc pChangeVolProc) {}
 
 // This function allows you to notify user about the progress when you un/pack files
-void __stdcall SetProcessDataProc(myHANDLE hArcData, tProcessDataProc pProcessDataProc)
-{
-}
+void __stdcall SetProcessDataProc(myHANDLE hArcData, tProcessDataProc pProcessDataProc) {}
 //---------------------------------------------------------------------------

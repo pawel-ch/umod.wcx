@@ -54,8 +54,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,0,2,0
- PRODUCTVERSION 0,0,2,0
+ FILEVERSION 0,0,3,0
+ PRODUCTVERSION 0,0,3,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -70,25 +70,33 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
+            VALUE "Comments", "\0"
             VALUE "CompanyName", "balver\0"
             VALUE "FileDescription", "This file is a package (WCX) plugin for Total Commander\0"
-            VALUE "FileVersion", "0.0.2\0"
+            VALUE "FileVersion", "0.0.3\0"
             VALUE "InternalName", "umod\0"
-            VALUE "LegalCopyright", "Copyright © 2004\0"
+            VALUE "LegalCopyright", "Copyright © 2004 by balver\0"
+            VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "umod.wcx\0"
+            VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "UMOD plugin for Total Commander\0"
-            VALUE "ProductVersion", "0.0.2\0"
+            VALUE "ProductVersion", "0.0.3\0"
+            VALUE "SpecialBuild", "\0"
         END
         BLOCK "041504b0"
         BEGIN
+            VALUE "Comments", "\0"
             VALUE "CompanyName", "balver\0"
             VALUE "FileDescription", "Ten plik jest wtyczk¹ obs³ugi archiwów (WCX) dla programu Total Commander\0"
-            VALUE "FileVersion", "0.0.2\0"
+            VALUE "FileVersion", "0.0.3\0"
             VALUE "InternalName", "umod\0"
-            VALUE "LegalCopyright", "Prawa autorskie © 2004\0"
+            VALUE "LegalCopyright", "Prawa autorskie © 2004 nale¿¹ do: balver\0"
+            VALUE "LegalTrademarks", "\0"
             VALUE "OriginalFilename", "umod.wcx\0"
+            VALUE "PrivateBuild", "\0"
             VALUE "ProductName", "Wtyczka UMOD dla programu Total Commander\0"
-            VALUE "ProductVersion", "0.0.2\0"
+            VALUE "ProductVersion", "0.0.3\0"
+            VALUE "SpecialBuild", "\0"
         END
     END
     BLOCK "VarFileInfo"
@@ -99,6 +107,15 @@ END
 
 #endif    // !_MAC
 
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDI_ICON1               ICON    DISCARDABLE     "umod.ico"
 #endif    // Polish resources
 /////////////////////////////////////////////////////////////////////////////
 
