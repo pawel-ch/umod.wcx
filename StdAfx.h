@@ -15,6 +15,9 @@
 #define WIN32_LEAN_AND_MEAN		// Exclude rarely-used stuff from Windows headers
 
 #include <windows.h>
+#include "wcxhead.h"
+#include <direct.h>
+//#include <msdetect.h> // CbGetIniKeyString
 
 // TODO: reference additional headers your program requires here
 
