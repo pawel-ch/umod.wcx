@@ -1,81 +1,87 @@
-/*****************************************************************
-  UMOD.WCX plugin for Total Commander by balver <balver@gmail.com>
-******************************************************************
+/*******************************************************************************
+  UMOD.WCX plugin for Total Commander by Pawel Chojnowski <pawelch@pawelch.info>
+********************************************************************************
 
-  For credits or some info, see readme-en.txt. I'm from Poland, so
-  Polish documentation is also available.
+  Latest stable build:
+   * http://pawelch.info/
 
-  You can download the newest version at:
-  http://square.piwko.pl/index.php?adres=download
+  Source code:
+   * https://github.com/pawel-ch/umod.wcx
 
-  This plugin is licensed under GPL.
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
 
-*****************************************************************/
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
 
-#include "stdafx.h"            // a file present in every Visual C++ project
-                               // we can for example include here some standard libraries
-#include "umodcrc.h"           // without this plugin wouldn't be able to count UMOD's CRC
-                               // thanks to Luigi Auriemma for publishing it
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
 
-#define BUFFSZ      32768      // buffer length
-#define UMODSIGN    0x9fe3c5a3 // UMOD sign if UMOD archive's identification number
+  http://www.gnu.org/licenses/gpl.txt
 
-// a little structure, where we store an important info about UMOD's INDEX section :D
+*******************************************************************************/
+
+#include "stdafx.h"
+#include "umodcrc.h"
+
+#define BUFFSZ      32768
+#define UMODSIGN    0x9fe3c5a3
+
 struct end {
-	unsigned long sign;
-	unsigned long indexstart;
-	unsigned long indexend;
-	unsigned long one;
-	unsigned long crc;
+    unsigned long sign;
+    unsigned long indexstart;
+    unsigned long indexend;
+    unsigned long one;
+    unsigned long crc;
 } end;
 
-// here we store settings of this plugin
 struct settings {
-	int CRC;          // 1: count archive's CRC (0: don't do it)
-	                  //    default: 0
-	int ChangeName;   // 0: don't change manifest.* filenames
+    int CRC;          // 1: check CRC when opening
+                      // 0: skip CRC check
+                      //    default: 0
+    int ChangeName;   // 0: don't change manifest.* filenames
                       // 1: change manifest.* -> !UMOD.*
                       // 2: change manifest.* -> !<product>.* (not implemented yet)
-	                  //    default: 1
-	int Modify;       // 1: add "! make UMOD.bat" file into archive (and modify manifest.ini file in future)
-	                  //    default: 1
-	int ProductNameLen;
-	char ProductName[_MAX_FNAME]; // cannot be definied in umod.cfg
+                      //    default: 1
+    int Modify;       // 1: add "! make UMOD.bat" file into archive (and modify manifest.ini file in future)
+                      //    default: 1
+    int ProductNameLen;
+    char ProductName[_MAX_FNAME];
 } settings;
 
-// an simple structure that stores info about one file from archive
 typedef struct t_FileList {
-	char name[_MAX_FNAME];
-	//char pathname[NAMESZ];
-	long offset;
-	long size;
-	long flag;
-	t_FileList *next;
-	t_FileList *prev;
+    char name[_MAX_FNAME];
+    //char pathname[NAMESZ];
+    long offset;
+    long size;
+    long flag;
+    t_FileList *next;
+    t_FileList *prev;
 } t_FileList;
 
-// a very important structure, storing all needed info about UMOD archive, we've already opened
 typedef struct t_ArchiveInfo {
-	char name[_MAX_FNAME];      // UMOD archive name
-	FILE *hArchFile;        // HANDLE to file ("active" all the time, when plugin works)
-	SYSTEMTIME stLastWrite; // last modification date
+    char name[_MAX_FNAME];
+    FILE *hArchFile;        // HANDLE to file ("active" all the time, when plugin works)
+    SYSTEMTIME stLastWrite;
 
-	t_FileList *filelist;   // non-cyclic two-way list data structure
+    t_FileList *filelist;   // non-cyclic two-way list
 
-	long totalfiles;        // number of files in archive
-	int lastfile;           // boolean value (0/1), and a question is: Is this file the last file in archive? :D
-	unsigned long crc;      // here we store UMOD's CRC
+    long totalfiles;
+    int lastfile;           // boolean
+    unsigned long crc;
 } t_ArchiveInfo;
 
-// to simplify some declarations I made here new type of data :D
 typedef t_ArchiveInfo *myHANDLE;
 
-// function declarations - for info or implementation look at bottom of this page
 long fread_index(FILE *fd);
 int CreateFileList(myHANDLE hArcData);
 void ReadSettings(void);
 
-// plugin path "things"
 char szPlugPath[MAX_PATH],
      szConfPath[MAX_PATH],
      szLogPath[MAX_PATH],
@@ -88,8 +94,7 @@ char szPlugPath[MAX_PATH],
 
 LPTSTR Buffer;
 
-// HERE PLUGIN STARTS - IT IS GOOD PLACE TO DEFINE, WHERE PLUGIN IS AND FROM WHERE WE WILL READ SETTINGS
-BOOL APIENTRY DllMain( HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved) {
+BOOL APIENTRY DllMain(HANDLE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
   switch (ul_reason_for_call) {
     case DLL_PROCESS_ATTACH:
     case DLL_THREAD_ATTACH:
@@ -99,8 +104,8 @@ BOOL APIENTRY DllMain( HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
       strcpy(szExt,"cfg"); _makepath(szConfPath,szDrive,szPath,szName,szExt);
       strcpy(szExt,"log"); _makepath(szLogPath,szDrive,szPath,szName,szExt);
       strcpy(szTempPath,getenv("TEMP")); // temporary path for unpacking manifest.ini file
-	  strcpy(szTempManifest,szTempPath);
-	  strcat(szTempManifest,"manifest.ini");
+      strcpy(szTempManifest,szTempPath);
+      strcat(szTempManifest,"manifest.ini");
       break;
 
     case DLL_THREAD_DETACH:
@@ -112,377 +117,355 @@ BOOL APIENTRY DllMain( HANDLE hModule, DWORD  ul_reason_for_call, LPVOID lpReser
 
 //#################################[ DLL exports ]#####################################
 
-// OpenArchive should perform all necessary operations when an archive is to be opened
 myHANDLE __stdcall OpenArchive(tOpenArchiveData *ArchiveData) {
-	t_ArchiveInfo * hArcData;
+    t_ArchiveInfo * hArcData;
 
-	ReadSettings();
+    ReadSettings();
 
-	ArchiveData->CmtBuf=0;
-	ArchiveData->CmtBufSize=0;
-	ArchiveData->CmtSize=0;
-	ArchiveData->CmtState=0;
+    ArchiveData->CmtBuf=0;
+    ArchiveData->CmtBufSize=0;
+    ArchiveData->CmtSize=0;
+    ArchiveData->CmtState=0;
 
-	ArchiveData->OpenResult=E_NO_MEMORY; // default error
-	if((hArcData = new t_ArchiveInfo)==NULL) {
-		return 0;
-	}
-	
-	memset(hArcData,0,sizeof(t_ArchiveInfo));
-	strcpy(hArcData->name,ArchiveData->ArcName);
+    ArchiveData->OpenResult=E_NO_MEMORY; // default error
+    if((hArcData = new t_ArchiveInfo)==NULL) {
+        return 0;
+    }
+    
+    memset(hArcData,0,sizeof(t_ArchiveInfo));
+    strcpy(hArcData->name,ArchiveData->ArcName);
 
 // ===================================================================
-//	temporary solution for reading UMOD's last modification date/time
-	FILETIME ftLastWrite, ftLocal;
-	HANDLE arcForTime;
-	arcForTime = CreateFile(ArchiveData->ArcName,
-		GENERIC_READ,
-		FILE_SHARE_READ,
-		NULL,
-		OPEN_EXISTING,
-		FILE_ATTRIBUTE_NORMAL,
-		NULL);
-	GetFileTime(arcForTime, NULL, NULL, &ftLastWrite);
-	FileTimeToLocalFileTime(&ftLastWrite,&ftLocal);
-	FileTimeToSystemTime(&ftLocal,&(hArcData->stLastWrite));
-	CloseHandle(arcForTime);
+//    temporary solution for reading UMOD's last modification date/time
+    FILETIME ftLastWrite, ftLocal;
+    HANDLE arcForTime;
+    arcForTime = CreateFile(ArchiveData->ArcName,
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL);
+    GetFileTime(arcForTime, NULL, NULL, &ftLastWrite);
+    FileTimeToLocalFileTime(&ftLastWrite,&ftLocal);
+    FileTimeToSystemTime(&ftLocal,&(hArcData->stLastWrite));
+    CloseHandle(arcForTime);
 // ================================================================ */
 
-//	try to open
-	hArcData->hArchFile = fopen(ArchiveData->ArcName,"rb");
-	if(!hArcData->hArchFile) {
-		ArchiveData->OpenResult = E_EOPEN; // error when opening
-		// remember to free memory
-		if(hArcData->hArchFile!=NULL) fclose(hArcData->hArchFile);
-		return 0;
-	}
+    hArcData->hArchFile = fopen(ArchiveData->ArcName,"rb");
+    if(!hArcData->hArchFile) {
+        ArchiveData->OpenResult = E_EOPEN;
+        // remember to free memory
+        if(hArcData->hArchFile!=NULL) fclose(hArcData->hArchFile);
+        return 0;
+    }
 
-	// UMOD's CRC calculation
-	if(settings.CRC == 1) hArcData->crc=umodcrc(hArcData->hArchFile);
+    // CRC calculation
+    if(settings.CRC == 1) hArcData->crc=umodcrc(hArcData->hArchFile);
 
+    if(fseek(hArcData->hArchFile, -sizeof(end),SEEK_END)<0)  {
+        ArchiveData->OpenResult = E_BAD_DATA;
+        if(hArcData->hArchFile!=NULL) fclose(hArcData->hArchFile);
+        return 0;
+    }
 
-	if(fseek(hArcData->hArchFile, -sizeof(end),SEEK_END)<0)  {
-		ArchiveData->OpenResult = E_BAD_DATA;
-		if(hArcData->hArchFile!=NULL) fclose(hArcData->hArchFile);
-		return 0;
-	}
+    // read UMOD's INDEX section info
+    if(fread(&end, sizeof(end),1,hArcData->hArchFile)!=1) {
+        ArchiveData->OpenResult = E_EREAD;
+        if(hArcData->hArchFile!=NULL) fclose(hArcData->hArchFile);
+        return 0;
+    }
 
-	// we're going to read UMOD's INDEX section info
-	if(fread(&end, sizeof(end),1,hArcData->hArchFile)!=1) {
-		ArchiveData->OpenResult = E_EREAD;
-		if(hArcData->hArchFile!=NULL) fclose(hArcData->hArchFile);
-		return 0;
-	}
+    // CRC calculation continued
+    if(settings.CRC == 1) {
+        if(hArcData->crc!=end.crc) { // bad archive
+            ArchiveData->OpenResult = E_BAD_ARCHIVE;
+            if(hArcData->hArchFile!=NULL) fclose(hArcData->hArchFile);
+            return 0;
+        }
+    }
 
-	// UMOD's CRC calculation again
-	if(settings.CRC == 1) {
-		if(hArcData->crc!=end.crc) { // bad archive
-			ArchiveData->OpenResult = E_BAD_ARCHIVE;
-			if(hArcData->hArchFile!=NULL) fclose(hArcData->hArchFile);
-			return 0;
-		}
-	}
+    if(end.sign!=UMODSIGN) { // UMOD identification sign missing
+        ArchiveData->OpenResult = E_UNKNOWN_FORMAT;
+        if(hArcData->hArchFile!=NULL) fclose(hArcData->hArchFile);
+        return 0;
+    }
 
-	if(end.sign!=UMODSIGN) { // UMOD identification sign missed
-		ArchiveData->OpenResult = E_UNKNOWN_FORMAT;
-		if(hArcData->hArchFile!=NULL) fclose(hArcData->hArchFile);
-		return 0;
-	}
+    // security
+    hArcData->lastfile = 0;
+    hArcData->filelist = NULL;
 
-	// security
-	hArcData->lastfile = 0;
-	hArcData->filelist = NULL;
+    ArchiveData->OpenResult = CreateFileList(hArcData);
+    // if CreateFileList changed OpenResult (error code) return 0 (it is bad :D)
+    if (ArchiveData->OpenResult!=0) return 0;
+    // set hArcData->filelist to pointer to first file record
+    while (hArcData->filelist->prev != NULL) hArcData->filelist = hArcData->filelist->prev;
 
-	// no comment :)
-	ArchiveData->OpenResult = CreateFileList(hArcData);
-	// if CreateFileList changed OpenResult (error code) return 0 (it is bad :D)
-	if (ArchiveData->OpenResult!=0) return 0;
-	// set hArcData->filelist to pointer to first file record
-	while (hArcData->filelist->prev != NULL) hArcData->filelist = hArcData->filelist->prev;
-
-	// 2005-04-07 we are here :)
-	// there is a need to put product name detection here
-	return hArcData;
+    // TODO: add product name detection here
+    return hArcData;
 }
 
-// Total Commander calls ReadHeader to find out what files are in the archive 
-int __stdcall ReadHeader(myHANDLE hArcData, tHeaderData *HeaderData)
-{
+int __stdcall ReadHeader(myHANDLE hArcData, tHeaderData *HeaderData) {
 
-	if(hArcData->lastfile == 1) return E_END_ARCHIVE;
+    if(hArcData->lastfile == 1) return E_END_ARCHIVE;
 
-	strcpy(HeaderData->ArcName,hArcData->name);
-	HeaderData->CmtBuf=0;
-	HeaderData->CmtBufSize=0;
-	HeaderData->CmtSize=0;
-	HeaderData->CmtState=0;
-	HeaderData->FileAttr=0;
-	HeaderData->FileCRC=0;
-	strcpy(HeaderData->FileName,hArcData->filelist->name);
-	HeaderData->FileTime=(hArcData->stLastWrite.wYear - 1980) << 25
-		                | hArcData->stLastWrite.wMonth << 21
-						| hArcData->stLastWrite.wDay << 16
-						| hArcData->stLastWrite.wHour << 11
-						| hArcData->stLastWrite.wMinute << 5
-						| hArcData->stLastWrite.wSecond/2;
-	HeaderData->Flags=0;
-	HeaderData->HostOS=0;
-	HeaderData->Method=0;
-	HeaderData->PackSize=hArcData->filelist->size;
-	HeaderData->UnpSize=hArcData->filelist->size;
-	HeaderData->UnpVer=0;
-	
-	if (hArcData->filelist->next == NULL) { // checking, if the last file in archive were just send
-		hArcData->lastfile=1;
-		return 0;
-	}
-	return 0;
+    strcpy(HeaderData->ArcName,hArcData->name);
+    HeaderData->CmtBuf=0;
+    HeaderData->CmtBufSize=0;
+    HeaderData->CmtSize=0;
+    HeaderData->CmtState=0;
+    HeaderData->FileAttr=0;
+    HeaderData->FileCRC=0;
+    strcpy(HeaderData->FileName,hArcData->filelist->name);
+    HeaderData->FileTime=(hArcData->stLastWrite.wYear - 1980) << 25
+                        | hArcData->stLastWrite.wMonth << 21
+                        | hArcData->stLastWrite.wDay << 16
+                        | hArcData->stLastWrite.wHour << 11
+                        | hArcData->stLastWrite.wMinute << 5
+                        | hArcData->stLastWrite.wSecond/2;
+    HeaderData->Flags=0;
+    HeaderData->HostOS=0;
+    HeaderData->Method=0;
+    HeaderData->PackSize=hArcData->filelist->size;
+    HeaderData->UnpSize=hArcData->filelist->size;
+    HeaderData->UnpVer=0;
+    
+    if (hArcData->filelist->next == NULL) { // check if last file
+        hArcData->lastfile=1;
+        return 0;
+    }
+    return 0;
 }
 
-// ProcessFile should unpack the specified file or test the integrity of the archive
 int __stdcall ProcessFile(myHANDLE hArcData, int Operation, char *DestPath, char *DestName)
 {
-	FILE  *outputfile;
-	long  len, size;
-	void  *buff;
-	size = hArcData->filelist->size;
+    FILE  *outputfile;
+    long  len, size;
+    void  *buff;
+    size = hArcData->filelist->size;
 
-	if (Operation == PK_EXTRACT) {
-		// important part of plugin begins here
-		CreateDirectory(DestPath,NULL);
+    if (Operation == PK_EXTRACT) {
+        // TODO: use extract function/remove redundant code
+        CreateDirectory(DestPath,NULL);
 
-		// "System\! make UMOD.bat" file creation
-		if(strcmp(hArcData->filelist->name,"System\\! make UMOD.bat")==0) {
-			outputfile = fopen(DestName,"wt");
-			if(!outputfile) {
-				if(outputfile!=NULL) fclose(outputfile);
-				return E_EWRITE;
-			}
-			fprintf(outputfile,"@echo off\n"
-							"copy Manifest.ini bla.bak > nul\n"
-							"ucc master \"!%s\"\n"
-							"del Manifest.*\n"
-							"move bla.bak Manifest.ini > nul\n"
-							"del \"!%s.ini\"\n"
-							"del \"!%s.int\"\n"
-							"cls\n"
-							"del %%0", settings.ProductName, settings.ProductName, settings.ProductName);
-			fclose(outputfile);
-			if (hArcData->lastfile!=1) hArcData->filelist=hArcData->filelist->next;
-			return 0;
-		}
+        // "System\! make UMOD.bat" file creation
+        if(strcmp(hArcData->filelist->name,"System\\! make UMOD.bat")==0) {
+            outputfile = fopen(DestName,"wt");
+            if(!outputfile) {
+                if(outputfile!=NULL) fclose(outputfile);
+                return E_EWRITE;
+            }
+            fprintf(outputfile,"@echo off\n"
+                            "copy Manifest.ini bla.bak > nul\n"
+                            "ucc master \"!%s\"\n"
+                            "del Manifest.*\n"
+                            "move bla.bak Manifest.ini > nul\n"
+                            "del \"!%s.ini\"\n"
+                            "del \"!%s.int\"\n"
+                            "cls\n"
+                            "del %%0", settings.ProductName, settings.ProductName, settings.ProductName);
+            fclose(outputfile);
+            if (hArcData->lastfile!=1) hArcData->filelist=hArcData->filelist->next;
+            return 0;
+        }
 
-		// standard UMOD files process here
-		outputfile = fopen(DestName,"wb");
-		if(!outputfile) {
-			if(outputfile!=NULL) fclose(outputfile);
-			return E_EWRITE;
-		}
+        // standard UMOD processing
+        outputfile = fopen(DestName,"wb");
+        if(!outputfile) {
+            if(outputfile!=NULL) fclose(outputfile);
+            return E_EWRITE;
+        }
 
-		buff = malloc(BUFFSZ);
-		if(!buff) {
-			free(buff);
-			return E_NO_MEMORY;
-		}
-		if(fseek(hArcData->hArchFile,hArcData->filelist->offset,SEEK_SET)<0) {
-			fclose(hArcData->hArchFile);
-			return E_EREAD;
-		}
+        buff = malloc(BUFFSZ);
+        if(!buff) {
+            free(buff);
+            return E_NO_MEMORY;
+        }
+        if(fseek(hArcData->hArchFile,hArcData->filelist->offset,SEEK_SET)<0) {
+            fclose(hArcData->hArchFile);
+            return E_EREAD;
+        }
 
-		// let's do it... :D
-		len = BUFFSZ;
+        len = BUFFSZ;
 
-		while(size) {
-			if(len>size) len = size;
-			if(fread(buff,len,1,hArcData->hArchFile)!=1) {
-				if(outputfile!=NULL) fclose(outputfile);
-				free(buff);
-				return 0;
-			}
-			if(fwrite(buff,len,1,outputfile)!=1) {
-				if(outputfile!=NULL) fclose(outputfile);
-				free(buff);
-				return 0;
-			}
-			size-=len;
-		}
+        while(size) {
+            if(len>size) len = size;
+            if(fread(buff,len,1,hArcData->hArchFile)!=1) {
+                if(outputfile!=NULL) fclose(outputfile);
+                free(buff);
+                return 0;
+            }
+            if(fwrite(buff,len,1,outputfile)!=1) {
+                if(outputfile!=NULL) fclose(outputfile);
+                free(buff);
+                return 0;
+            }
+            size-=len;
+        }
 
-		// uninitialize stuff... :P
-		fclose(outputfile);
-		free (buff);
-	}
-	if (hArcData->lastfile!=1) hArcData->filelist=hArcData->filelist->next;
-	return 0;
+        // uninit
+        fclose(outputfile);
+        free (buff);
+    }
+    if (hArcData->lastfile!=1) hArcData->filelist=hArcData->filelist->next;
+    return 0;
 }
 
-int extract(long size, long len, long offset, myHANDLE hArcData)
-{
-	FILE  *outputfile;
-	void  *buff;
+// TODO: not an export - move below
+int extract(long size, long len, long offset, myHANDLE hArcData) {
+    FILE  *outputfile;
+    void  *buff;
 
-	// important part of plugin begins here
-	CreateDirectory(szTempPath,NULL);
+    CreateDirectory(szTempPath,NULL);
 
-	// standard UMOD files process here
-	outputfile = fopen(szTempManifest,"wb");
-	if(!outputfile) {
-		if(outputfile!=NULL) fclose(outputfile);
-		return E_EWRITE;
-	}
+    // standard UMOD processing
+    outputfile = fopen(szTempManifest,"wb");
+    if(!outputfile) {
+        if(outputfile!=NULL) fclose(outputfile);
+        return E_EWRITE;
+    }
 
-	//MessageBox(NULL,"jest ok","Nie-b³¹d",MB_OK);
+    buff = malloc(BUFFSZ);
+    if(!buff) {
+        free(buff);
+        return E_NO_MEMORY;
+    }
+    if(fseek(hArcData->hArchFile,offset,SEEK_SET)<0) {
+        fclose(hArcData->hArchFile);
+        return E_EREAD;
+    }
 
-	buff = malloc(BUFFSZ);
-	if(!buff) {
-		free(buff);
-		return E_NO_MEMORY;
-	}
-	if(fseek(hArcData->hArchFile,offset,SEEK_SET)<0) {
-		fclose(hArcData->hArchFile);
-		return E_EREAD;
-	}
+    len = BUFFSZ;
 
-	// let's do it... :D
-	len = BUFFSZ;
+    while(size) {
+        if(len>size) len = size;
+        if(fread(buff,len,1,hArcData->hArchFile)!=1) {
+            if(outputfile!=NULL) fclose(outputfile);
+            free(buff);
+            return 0;
+        }
+        if(fwrite(buff,len,1,outputfile)!=1) {
+            if(outputfile!=NULL) fclose(outputfile);
+            free(buff);
+            return 0;
+        }
+        size-=len;
+    }
 
-	while(size) {
-		if(len>size) len = size;
-		if(fread(buff,len,1,hArcData->hArchFile)!=1) {
-			if(outputfile!=NULL) fclose(outputfile);
-			free(buff);
-			return 0;
-		}
-		if(fwrite(buff,len,1,outputfile)!=1) {
-			if(outputfile!=NULL) fclose(outputfile);
-			free(buff);
-			return 0;
-		}
-		size-=len;
-	}
-
-	// uninitialize stuff... :P
-	fclose(outputfile);
-	free (buff);
-	return 0;
+    // uninit
+    fclose(outputfile);
+    free(buff);
+    return 0;
 }
 
-// CloseArchive should perform all necessary operations when an archive is about to be closed
 int __stdcall CloseArchive(myHANDLE hArcData)
 {
-	fclose (hArcData->hArchFile);
-	return 0;
+    fclose (hArcData->hArchFile);
+    return 0;
 }
 
-// This function allows you to notify user about changing a volume when packing files
-// NOT USED IN MY PLUGIN BUT NEEDED AS EXPORT FOR TC
+// not used in this plugin but required as export for TC
 void __stdcall SetChangeVolProc(myHANDLE hArcData, tChangeVolProc pChangeVolProc) {}
 
-// This function allows you to notify user about the progress when you un/pack files
-// NOT USED IN MY PLUGIN BUT NEEDED AS EXPORT FOR TC
+// not used in this plugin but required as export for TC
 void __stdcall SetProcessDataProc(myHANDLE hArcData, tProcessDataProc pProcessDataProc) {}
 
-// see wcxhead.h for info
+// see wcxhead.h for details
 int __stdcall GetPackerCaps() {
-	return PK_CAPS_HIDE;
+    return PK_CAPS_HIDE;
 }
 
 //###############################[ implementations ]####################################
 
 int CreateFileList(myHANDLE hArcData) {
 
-	t_FileList *newfile, *previous;
-	int counter;
-	long PointerPosition;
+    t_FileList *newfile, *previous;
+    int counter;
+    long PointerPosition;
 
-	// store INDEX section of UMOD (it contains all info about files in archive)
-	if(fseek(hArcData->hArchFile,end.indexstart,SEEK_SET)<0) { // PL: uszkodzony INDEX / ENG: bad INDEX
-		fclose(hArcData->hArchFile);
-		return E_BAD_ARCHIVE;
-	}
+    // store INDEX section of UMOD (it contains all info about files in archive)
+    if(fseek(hArcData->hArchFile,end.indexstart,SEEK_SET)<0) { // check if bad INDEX
+        fclose(hArcData->hArchFile);
+        return E_BAD_ARCHIVE;
+    }
 
-	// store total number of files in UMOD
-	hArcData->totalfiles=fread_index(hArcData->hArchFile);
-	// if we want to add some files into UMOD, here is good place to inform about it
-	if((settings.ChangeName==1)&&(settings.Modify==1)) hArcData->totalfiles++;
+    // store total number of files in UMOD
+    hArcData->totalfiles=fread_index(hArcData->hArchFile);
+    // increase for virtual files
+    if((settings.ChangeName==1)&&(settings.Modify==1)) hArcData->totalfiles++;
 
-	for (counter=0; hArcData->totalfiles > counter; counter++) {
-		// initialize new record
-		if((newfile = new t_FileList)==NULL) {
-			fclose(hArcData->hArchFile);
-			return E_NO_MEMORY;
-		}
-		// security
-		newfile->prev = NULL; newfile->next=NULL;
+    for (counter=0; hArcData->totalfiles > counter; counter++) {
+        if((newfile = new t_FileList)==NULL) {
+            fclose(hArcData->hArchFile);
+            return E_NO_MEMORY;
+        }
+        newfile->prev = NULL; newfile->next=NULL;
 
-		// the beginning of list is good place to inform TC about files not existing in UMOD
-		// for now plugin adds "System\! make UMOD.bat" file (depending on two settings - see below)
-		if (counter==0) {
-			hArcData->filelist=newfile;
-			if((settings.ChangeName==1)&&(settings.Modify==1)) {
-			  strcpy(newfile->name,"System\\! make UMOD.bat");
-			  newfile->size=146+3*settings.ProductNameLen;
-			  previous = newfile;
-			  continue;
-			}
-		}
+        // add virtual "System\! make UMOD.bat" file (depending on settings)
+        if (counter==0) {
+            hArcData->filelist=newfile;
+            if((settings.ChangeName==1)&&(settings.Modify==1)) {
+              strcpy(newfile->name,"System\\! make UMOD.bat");
+              newfile->size=146+3*settings.ProductNameLen;
+              previous = newfile;
+              continue;
+            }
+        }
 
-		// store file name, long fread_index(FILE*) returns file name length
-		if(fread(newfile->name,fread_index(hArcData->hArchFile), 1, hArcData->hArchFile)!=1) {
-			fclose(hArcData->hArchFile);
-			return E_EREAD;
-		}
+        // file name, long fread_index(FILE*) returns file name length
+        if(fread(newfile->name,fread_index(hArcData->hArchFile), 1, hArcData->hArchFile)!=1) {
+            fclose(hArcData->hArchFile);
+            return E_EREAD;
+        }
 
-		// store file offset in UMOD archive
-		if(fread(&(newfile->offset),4,1,hArcData->hArchFile)!=1) {
-			fclose(hArcData->hArchFile);
-			return E_EREAD;
-		}
-		// store file size
-		if(fread(&(newfile->size),4,1,hArcData->hArchFile)!=1) {
-			fclose(hArcData->hArchFile);
-			return E_EREAD;
-		}
-		// store file flag from UMOD - not used in plugin
-		if(fread(&(newfile->flag),4,1,hArcData->hArchFile)!=1) {
-			fclose(hArcData->hArchFile);
-			return E_EREAD;
-		}
+        // file offset in UMOD
+        if(fread(&(newfile->offset),4,1,hArcData->hArchFile)!=1) {
+            fclose(hArcData->hArchFile);
+            return E_EREAD;
+        }
+        // file size
+        if(fread(&(newfile->size),4,1,hArcData->hArchFile)!=1) {
+            fclose(hArcData->hArchFile);
+            return E_EREAD;
+        }
+        // file flag from UMOD - not used at the moment
+        if(fread(&(newfile->flag),4,1,hArcData->hArchFile)!=1) {
+            fclose(hArcData->hArchFile);
+            return E_EREAD;
+        }
 
-		// we'll extract manifest.ini to find out what the product name is
-		if((settings.ChangeName==1)&&(strcmp(newfile->name,"System\\Manifest.ini")==0)) { // needed an modification below for settings.ProductName
-			PointerPosition = ftell(hArcData->hArchFile);
-			extract(newfile->size,newfile->size,newfile->offset,hArcData);
+        // get product name from Manifest.ini
+        if((settings.ChangeName==1)&&(strcmp(newfile->name,"System\\Manifest.ini")==0)) { // needed an modification below for settings.ProductName
+            PointerPosition = ftell(hArcData->hArchFile);
+            extract(newfile->size,newfile->size,newfile->offset,hArcData);
             settings.ProductNameLen = (int)GetPrivateProfileString("Setup","Product","UMOD",settings.ProductName,_MAX_FNAME,szTempManifest);
-			DeleteFile(szTempManifest);
-			fseek(hArcData->hArchFile,PointerPosition,SEEK_SET);
-		}
+            DeleteFile(szTempManifest);
+            fseek(hArcData->hArchFile,PointerPosition,SEEK_SET);
+        }
 
-		// code IMHO is easy to understand (if not: it changes names in archive - it doesn't
-		// modify UMOD, but it modify what we will see when we open archive in TC)
-		if(settings.ChangeName==1) { // needed an modification below for settings.ProductName
-			if(strcmp(newfile->name,"System\\Manifest.ini")==0) {
-				strcpy(newfile->name,"System\\!");
-				strcat(newfile->name,settings.ProductName);
-				strcat(newfile->name,".ini");
-			}
+        // optionally rename Manifest.*
+        if(settings.ChangeName==1) {
+            if(strcmp(newfile->name,"System\\Manifest.ini")==0) {
+                strcpy(newfile->name,"System\\!");
+                strcat(newfile->name,settings.ProductName);
+                strcat(newfile->name,".ini");
+            }
 
-			if(strcmp(newfile->name,"System\\Manifest.int")==0) {
-				strcpy(newfile->name,"System\\!");
-				strcat(newfile->name,settings.ProductName);
-				strcat(newfile->name,".int");
-			}
-		}
+            if(strcmp(newfile->name,"System\\Manifest.int")==0) {
+                strcpy(newfile->name,"System\\!");
+                strcat(newfile->name,settings.ProductName);
+                strcat(newfile->name,".int");
+            }
+        }
 
-		// set pointers to next and previous recors
-		if (counter>0) { previous->next = newfile; newfile->prev = previous; }
-		// remember current "fileinfo record" as previous
-		previous = newfile;
-	}
+        if (counter>0) { previous->next = newfile; newfile->prev = previous; }
+        previous = newfile;
+    }
 
-	return 0;
+    return 0;
 }
 
-// a simple function that reads INDEX type (made by Luigi Auriemma)
+// reads INDEX type (by Luigi Auriemma)
 long fread_index(FILE *fd) {
     long    result = 0;
     unsigned char  b0, b1, b2, b3, b4;
@@ -510,11 +493,11 @@ long fread_index(FILE *fd) {
     return(result);
 }
 
-// this function reads umod.cfg (INI-format) file in plugin's directory and read settings from it.
+// read umod.cfg (INI-format) from plugin's directory
 void ReadSettings(void) {
-	settings.CRC = GetPrivateProfileInt("Settings","CRC",0,(char*)&szConfPath);
-	settings.ChangeName = GetPrivateProfileInt("Settings","ChangeName",1,(char*)&szConfPath);
-	settings.Modify = GetPrivateProfileInt("Settings","Modify",1,(char*)&szConfPath);
-	strcpy(settings.ProductName,"UMOD");
-	settings.ProductNameLen=4;
+    settings.CRC = GetPrivateProfileInt("Settings","CRC",0,(char*)&szConfPath);
+    settings.ChangeName = GetPrivateProfileInt("Settings","ChangeName",1,(char*)&szConfPath);
+    settings.Modify = GetPrivateProfileInt("Settings","Modify",1,(char*)&szConfPath);
+    strcpy(settings.ProductName,"UMOD");
+    settings.ProductNameLen=4;
 }
