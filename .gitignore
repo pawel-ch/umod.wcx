@@ -19,3 +19,21 @@
 *.exe
 *.out
 *.app
+
+# Plugin binaries
+*.wcx
+*.wcx64
+
+# Build outputs
+/build*/
+*.pdb
+*.exp
+*.res
+*.ilk
+
+# IDE
+.vs/
+.idea/
+
+# misc
+var/
