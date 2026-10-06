@@ -2,6 +2,12 @@
 //
 #include "resource.h"
 
+#ifdef UMOD_WIN64
+#define UMOD_FILENAME "umod.wcx64"
+#else
+#define UMOD_FILENAME "umod.wcx"
+#endif
+
 #define APSTUDIO_READONLY_SYMBOLS
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -72,7 +78,7 @@ BEGIN
             VALUE "FileVersion", "0.0.7.0"
             VALUE "InternalName", "umod"
             VALUE "LegalCopyright", "Copyright © 2011 Paweł Chojnowski"
-            VALUE "OriginalFilename", "umod.wcx"
+            VALUE "OriginalFilename", UMOD_FILENAME
             VALUE "ProductName", "UMOD plugin for Total Commander"
             VALUE "ProductVersion", "0.0.7.0"
         END
@@ -83,7 +89,7 @@ BEGIN
             VALUE "FileVersion", "0.0.7.0"
             VALUE "InternalName", "umod"
             VALUE "LegalCopyright", "Prawa autorskie © 2014 Paweł Chojnowski"
-            VALUE "OriginalFilename", "umod.wcx"
+            VALUE "OriginalFilename", UMOD_FILENAME
             VALUE "ProductName", "Wtyczka UMOD dla programu Total Commander"
             VALUE "ProductVersion", "0.0.7.0"
         END
