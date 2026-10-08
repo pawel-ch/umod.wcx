@@ -77,7 +77,7 @@ BEGIN
             VALUE "FileDescription", "Package (WCX) plugin for Total Commander"
             VALUE "FileVersion", "0.0.7.0"
             VALUE "InternalName", "umod"
-            VALUE "LegalCopyright", "Copyright © 2011 Paweł Chojnowski"
+            VALUE "LegalCopyright", "Copyright © 2026 Paweł Chojnowski"
             VALUE "OriginalFilename", UMOD_FILENAME
             VALUE "ProductName", "UMOD plugin for Total Commander"
             VALUE "ProductVersion", "0.0.7.0"
@@ -88,7 +88,7 @@ BEGIN
             VALUE "FileDescription", "Wtyczka obsługi archiwów (WCX) dla programu Total Commander"
             VALUE "FileVersion", "0.0.7.0"
             VALUE "InternalName", "umod"
-            VALUE "LegalCopyright", "Prawa autorskie © 2014 Paweł Chojnowski"
+            VALUE "LegalCopyright", "Prawa autorskie © 2026 Paweł Chojnowski"
             VALUE "OriginalFilename", UMOD_FILENAME
             VALUE "ProductName", "Wtyczka UMOD dla programu Total Commander"
             VALUE "ProductVersion", "0.0.7.0"
